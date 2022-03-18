@@ -1,0 +1,7 @@
+.Rproj.user
+data/
+old_stuff/
+external/
+*.Rproj
+desktop.ini
+code_JS/folder_rawdata_processing/
