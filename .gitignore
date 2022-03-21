@@ -5,3 +5,5 @@ external/
 *.Rproj
 desktop.ini
 code_JS/folder_rawdata_processing/
+__pycache__/
+.vscode
