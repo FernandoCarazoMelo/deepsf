@@ -5,6 +5,7 @@ class Config():
     def __init__(self,
                  epochs=1000,
                  optimizer='sgd90',
+                 modelNN='DeepSF_2hidden',
                  batch_size=32,
                  learning_rate=1e-1,
                  if_toy=True,
@@ -25,6 +26,7 @@ class Config():
         # Screen
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.modelNN = modelNN
         self.epochs = epochs
         self.optimizer = optimizer
         self.num_genes = num_genes
@@ -36,6 +38,7 @@ class Config():
         config = dict(
             batch_size=self.batch_size,
             optimizer=self.optimizer,
+            modelNN=self.modelNN,
             epochs=self.epochs,
             learning_rate=self.learning_rate,
             if_toy=self.if_toy,
