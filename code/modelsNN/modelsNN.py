@@ -1,40 +1,10 @@
-# %%
 # Imports
 import torch
-import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
-# %% [markdown]
-# # Funciones para runnear los modelos
 
-# %%
-def evaluate(model, val_loader):
-    outputs = [model.validation_step(batch) for batch in val_loader]
-    return model.validation_epoch_end(outputs)
-
-def do_training(model, train_loader, optimizer):
-    outputs = [model.training_step(batch, optimizer) for batch in train_loader]
-    return model.training_epoch_end(outputs)
-
-def fit(epochs, lr, model, train_loader, val_loader, opt_func=torch.optim.SGD, weights=''):
-    history = []
-    optimizer = opt_func(model.parameters(), lr)
-    for epoch in range(epochs):
-        # Training Phase 
-        train_epoch_end = do_training(model, train_loader, optimizer)
-        # Validation phase
-        val_epoch_end = evaluate(model, val_loader)
-        model.epoch_end(epoch, train_epoch_end, val_epoch_end)
-        history.append(val_epoch_end)
-    return history
-
-# %% [markdown]
-# Linear with gene expression
-# -----------------------
-
-# %%
 class DeepSF(nn.Module):
     def __init__(self, n_inputs, n_outputs):
         super().__init__()
@@ -79,10 +49,6 @@ class DeepSF(nn.Module):
     def epoch_end(self, epoch, loss, result):
         print("Epoch [{}], loss: {:.4f}, val_loss: {:.4f}".format(epoch, loss['loss'], result['val_loss']))
 
-# %% [markdown]
-# ## 2 hidden layers with gene expression
-
-# %%
 class DeepSF_2hidden(nn.Module):
     def __init__(self, n_inputs, n_outputs):
         super().__init__()
@@ -128,17 +94,6 @@ class DeepSF_2hidden(nn.Module):
     def epoch_end(self, epoch, loss, result):
         print("Epoch [{}], loss: {:.4f}, val_loss: {:.4f}".format(epoch, loss['loss'], result['val_loss']))
 
-# %% [markdown]
-# ## 2 hidden layers weighted 
-
-# %%
-#def f_rmse(out, real):
-#  return torch.sum((out-real)**2)/out.nelement()
-
-def f_rmse_weighted(input, target, weights):
-    return torch.sum(weights * (input - target) ** 2)/input.nelement()
-
-# %%
 class DeepSFHiddenWeighted(nn.Module):
     def __init__(self, n_inputs, n_outputs, weights=''):
         super().__init__()
@@ -199,5 +154,3 @@ class DeepSFHiddenWeighted(nn.Module):
     def epoch_end(self, epoch, loss, result):
         print("Epoch [{}], loss: {:.4f}, val_loss: {:.4f}".format(epoch, loss['loss'], result['val_loss']))
   
-
-
