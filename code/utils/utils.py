@@ -17,6 +17,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
 from collections import namedtuple
+import modelsNN.modelsNN as modelsNN
+
 
 
 def get_data(path, config):
@@ -110,29 +112,6 @@ def get_data(path, config):
   return data_prep
 
 
-def wandb_train(model, train_loader, val_loader, hyperparameters, name_project):
-
-  # Tell wandb to get started
-  with wandb.init(project=name_project, entity="deepsf", config=hyperparameters):
-    config = wandb.config
-    wandb.watch(model, criterion=F.mse_loss, log="all", log_freq=10)
-    optimizer = build_optimizer(model, config.optimizer, config.learning_rate)
-
-    for epoch in range(config.epochs):  # METER EL VAL_LOSS EN EL .LOG
-      # Training Phase
-      loss_train_epoch_end = do_training(model, train_loader, optimizer)
-      # Validation phase
-      loss_val_epoch_end = evaluate(model, val_loader)
-      model.epoch_end(epoch, loss_train_epoch_end, loss_val_epoch_end)
-
-      wandb.log({"loss": loss_train_epoch_end,
-                "loss_val": loss_val_epoch_end, "epoch": epoch})
-
-  # Save the model in the exchangeable ONNX format
-  torch.onnx.export(model, "model.onnx")
-  wandb.save("model.onnx")
-
-
 
 # LEER SOBRE LOS OPTIMIZERS.
 def build_optimizer(model, optimizer, learning_rate):
@@ -159,6 +138,26 @@ def build_optimizer(model, optimizer, learning_rate):
     optimizer = torch.optim.RMSProp(model.parameters(), lr=learning_rate)
   return optimizer
 
+def get_model(config, data_prep):
+  """Return DNN model to predict splicing isoforms. 
+
+  Args:
+      config (Class): configuration class.
+      data_prep (Class): Data preprocessed.
+
+  Returns:
+      model: the model pytorch class. 
+  """
+  inp, out, gn = next(iter(data_prep.train_loader))
+  
+  if config.modelNN == 'DeepSF':
+      model = modelsNN.DeepSF(n_inputs=inp.shape[1], n_outputs=out.shape[1])
+      
+  elif config.modelNN == 'DeepSF_2hidden':
+      model = modelsNN.DeepSF_2hidden(n_inputs=inp.shape[1], n_outputs=out.shape[1])
+  
+  return model
+
 
 def evaluate(model, val_loader):
     outputs = [model.validation_step(batch) for batch in val_loader]
@@ -170,9 +169,15 @@ def do_training(model, train_loader, optimizer):
     return model.training_epoch_end(outputs)
 
 
-def fit(epochs, lr, model, train_loader, val_loader, opt_func=torch.optim.SGD, weights=''):
+def fit(epochs, lr, model, train_loader, val_loader, optimizer,
+        hyperparameters, if_wandb):
+
     history = []
-    optimizer = opt_func(model.parameters(), lr)
+    if if_wandb:
+        wandb.login()
+        wandb.init(project="tutorial_joseba", config=hyperparameters)
+        wandb.watch(model, criterion=F.mse_loss, log="all", log_freq=10)
+
     for epoch in range(epochs):
         # Training Phase
         train_epoch_end = do_training(model, train_loader, optimizer)
@@ -180,11 +185,23 @@ def fit(epochs, lr, model, train_loader, val_loader, opt_func=torch.optim.SGD, w
         val_epoch_end = evaluate(model, val_loader)
         model.epoch_end(epoch, train_epoch_end, val_epoch_end)
         history.append(val_epoch_end)
+
+        if if_wandb:
+            wandb.log({"loss": train_epoch_end,
+                      "loss_val": val_epoch_end, "epoch": epoch})
+
+
+#     if if_wandb:
+#     # Save the model in the exchangeable ONNX format
+#         torch.onnx.export(model, "model.onnx")
+#         wandb.save("model.onnx")
+
     return history
 
 
+
 def f_rmse_weighted(input, target, weights):
-    return torch.sum(weights * (input - target) ** 2)/input.nelement()
+  return torch.sum(weights * (input - target) ** 2)/input.nelement()
 
 # Plots
 #Plot 1
@@ -195,10 +212,8 @@ def val_loss_vs_epoch(history): # Función que plotea el val_loss por epoch
   plt.ylabel('val_loss')
   plt.title('val_loss vs. epochs');
 
-class ReturnPlotSolution(object):
-  def __init__(self, cor_total, cor_trans):
-    self.cor_total =  cor_total
-    self.cor_trans = cor_trans  
+
+
     
 #Plot2
 def plot_pred_vs_real(x,y,g, model): # Función que te plotea la predicción del 
@@ -242,11 +257,6 @@ def corr_vs_biotype(getBM, train_labels, cor_values):
   # ax = sns.boxplot(x='biotype', y="corr",
   #                data=plot_df, palette="Set3")
   
-  g = sns.catplot(y="biotype", x="corr",
-                  data=plot_df, palette="Set3",
-                orient="h", height=7, aspect=3,
-                kind="violin", dodge=True, cut=0, bw=.2)
 
-def get_model():
-  pass
+
 
