@@ -3,7 +3,6 @@ from pickletools import optimize
 import torch
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import wandb
-import torch
 #import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,80 +17,105 @@ from sklearn.preprocessing import StandardScaler
 from scipy import stats
 from collections import namedtuple
 import pyreadr
+import os
 
 # local modules
 import modelsNN.modelsNN as modelsNN
 
+
+def join_different_tumor_data(config, path, listRBPs):
+
+    TCGA_tpm_gn_RBPs = pd.DataFrame()
+    TCGA_tpm = pd.DataFrame()
+    TCGA_tpm_gn = pd.DataFrame()
+    cond = pd.DataFrame()
+
+    for i in config.tumor_type:
+        result = pyreadr.read_r(path+'/processed/'+f'Parsing_TCGA_{i}.RData')
+
+        one_TCGA_tpm = result["TCGA_tpm"] #isoform expression per patient in tpm
+        one_TCGA_tpm_gn = result["TCGA_tpm_gn"] #gen expression per patient in tpm
+        
+        one_cond = result["cond"] 
+        one_cond['cond'] = i + '_' + one_cond['cond'].astype(str)#for all the patients if they are normal or tumor and to which tumor type they belong.
+
+        # Obtaining the datafame of the expression of the splicing genes (SF = RBPs) from the general gene dataframe:
+         
+        listRBPs_intersect = set(listRBPs['HGNC symbol']).intersection((set(one_TCGA_tpm_gn.index)))
+        one_TCGA_tpm_gn_RBPs = one_TCGA_tpm_gn.loc[listRBPs_intersect] # Dataframe of the expression of the SF genes.
+
+        # Join the data of the different tumors:
+        TCGA_tpm_gn_RBPs = pd.concat([TCGA_tpm_gn_RBPs, one_TCGA_tpm_gn_RBPs], axis = 1)
+        TCGA_tpm = pd.concat([TCGA_tpm, one_TCGA_tpm], axis = 1)
+        TCGA_tpm_gn = pd.concat([TCGA_tpm_gn, one_TCGA_tpm_gn], axis = 1)
+        cond = pd.concat([cond, one_cond], axis = 0)
+
+    getBM = result["getBM"] # Dataframe that relates the isoform with the gene and has more information.
+ 
+     #""" Esta siempre es la misma para diferentes pacientes?? """
+  
+    DataRead = namedtuple('DataRead', ['TCGA_tpm_gn_RBPs', 'TCGA_tpm', 'TCGA_tpm_gn', 'cond', 'getBM'])
+    data_read = DataRead(TCGA_tpm_gn_RBPs, TCGA_tpm, TCGA_tpm_gn, cond, getBM)
+
+    return data_read
+
+
 def get_data(path, config):
     
-    # Leer los datos (LUAD):
-    result = pyreadr.read_r(path+'code_JS/data/input/LUAD/Parsing_luad.RData') #unlist Parsing_TCGA_LUAD:
-    # result is a dictionary where keys are the name of objects.-> odict_keys(['TCGA_tpm', 'TCGA_tpm_gn', 'getBM', 'cond'])
-    #Lista de los RBPs conocidos (SF genes).
-    listRBPs = pd.read_excel(path+'code_JS/data/input/Table_S2_list_RBPs_eyras.xlsx', skiprows=2)
+    # List of splicing genes
+    listRBPs = pd.read_excel(path+'/external/Table_S2_list_RBPs_eyras.xlsx', skiprows=2)
     
-
-    #Estos son los datos de expresión de isoforma (TCGA_tpm) de genes (TCGA_tpm_gn). Además de la
-    #información de tipo de tejido, normal vs tumoral (cond) y la información de la relación 
-    #de genes e isoformas (getBM).
-
-    TCGA_tpm = result["TCGA_tpm"] #expresión isoforma (transcrito) por paciente
-    TCGA_tpm_gn = result["TCGA_tpm_gn"] #expresión gen por paciente (valor de tpm)
-    getBM = result["getBM"] # matriz que te relaciona la isoforma (transcrito) con el gene_name
-    cond = result["cond"] #para todos los pacientes (tejido) si son normal o tumoral.
-
-    # Obtención de la matriz de genes de splicing (SF=RBPs) a partir de la matriz
-    # de genes general:
-    listRBPs_intersect = set(listRBPs['HGNC symbol']).intersection((set(TCGA_tpm_gn.index)))
-    TCGA_tpm_gn_RBPs = TCGA_tpm_gn.loc[listRBPs_intersect] # matriz de genes SF por paciente (valor de tpm)
-
-    # Eliminar isoformas únicas de la matriz de isoformas.
-    num_iso_per_gn = getBM.groupby(['Gene_name']).count()['Transcript_ID'] # Número de isoformas por gen
-    listgn_uniqueiso = num_iso_per_gn[num_iso_per_gn == 1].index.to_list() # Lista gn que solo tienen 1 isoforma:
-    list_uniqueiso = getBM[getBM["Gene_name"].isin(listgn_uniqueiso)]["Transcript_ID"].to_list()
-    listiso_intersect = set(TCGA_tpm.index.to_list()) - set(list_uniqueiso) # isoformas con las que nos vamos a quedar
+    # Read and join the data of different cancer types
+    data_read = join_different_tumor_data(config, path, listRBPs)
     
-    TCGA_tpm_without_uniqueiso = TCGA_tpm.loc[listiso_intersect]
+    TCGA_tpm_gn_RBPs = data_read.TCGA_tpm_gn_RBPs
+    TCGA_tpm = data_read.TCGA_tpm
+    TCGA_tpm_gn = data_read.TCGA_tpm_gn
+    cond = data_read.cond
+    getBM = data_read.getBM
 
-    # Trasponemos las matriz para tener los datos de los pacientes en las filas
+    # Remove unique isoforms from the isoform dataframe
+    num_iso_per_gn = getBM.groupby(['Gene_name']).count()['Transcript_ID'] # number of isoforms per gene
+    listgn_uniqueiso = num_iso_per_gn[num_iso_per_gn == 1].index.to_list() # list of genes that have only one isoform.
+    list_uniqueiso = getBM[getBM["Gene_name"].isin(listgn_uniqueiso)]["Transcript_ID"].to_list() # list of unique isoforms
+    listiso_intersect = set(TCGA_tpm.index.to_list()) - set(list_uniqueiso) # list of transcripts with more than one isoform
+    
+    TCGA_tpm_without_uniqueiso = TCGA_tpm.loc[listiso_intersect] # Dataframe of the isoform expression without the transcripts with one isoform.
+
+    # We transpose the dataframes to have the data of the patients in the axis 0 (rows):
     TCGA_tpm_gn_RBPs = TCGA_tpm_gn_RBPs.T 
     TCGA_tpm_without_uniqueiso = TCGA_tpm_without_uniqueiso.T
     TCGA_tpm_gn = TCGA_tpm_gn.T
     
-#     # Read the data from the file.
-#     with open(path + '/code_JS/folder_rawdata_processing/3-pipeline_files.pkl', 'rb') as fid:
-#         result = pickle.load(fid)
-
-#     # pacientes x gene_expression SFs
-#     TCGA_tpm_gn_RBPs = result['TCGA_tpm_gn_RBPs']
-#     # pacientes x gene_expression total genes
-#     TCGA_tpm_gn = result['TCGA_tpm_gn']
-#     # pacientes x isoform_expression
-#     TCGA_tpm_without_uniqueiso = result['TCGA_tpm_without_uniqueiso']
-#     # index x (Transcript_ID, Gene_ID, Transcrip_name, Gene_name, Biotype)
-#     getBM = result['getBM']
-
-    # Transformación Log2 a la matriz de isoformas.
+    # Apply a Log2 transformation to the dataframe of isoform expression:
     TCGA_tpm_without_uniqueiso_log2p = np.log2(1+TCGA_tpm_without_uniqueiso)
-    # getBM real.
+    
+    # Filter getBM. Only has the information of the transcripts that we have in the dataframe of the isoform expression:
     getBM = getBM.iloc[[a in TCGA_tpm_without_uniqueiso_log2p.columns for a in getBM.Transcript_ID], :]
 
-    toy_genes = list(getBM['Gene_name'][:config.num_genes])  # + [ 'TP53']
+    # Selecting the number of genes to use in the model:
+    if config.if_toy:
+        selected_genes = list(getBM['Gene_name'][:config.num_genes])
 
-    # getBM reducido.
-    getBM = getBM.iloc[[a in toy_genes for a in getBM.Gene_name], :]
+    else: # We only chose the genes related to the development of cancer
+        listTumorGenes = pd.read_excel(path+'/external/Table_S6_S5_Cancer_gener_eyras.xlsx', skiprows=2)
+        selected_genes = list(listTumorGenes['HGNC symbol'])
+        config.num_genes = len(selected_genes) # fill the config.num_genes data
 
-    toy_Transcript_ID = list(getBM.Transcript_ID)
-    TCGA_tpm_without_uniqueiso_log2p = TCGA_tpm_without_uniqueiso_log2p.loc[:,toy_Transcript_ID]
+    # getBM reduced with just the information of the selected genes:
+    getBM = getBM.iloc[[a in selected_genes for a in getBM.Gene_name], :] 
 
-    # Creamos el input 2: pacientes x expresión de los genes de cada una de las isoformas (de la matriz de genes total).
+    selected_Transcript_ID = list(getBM.Transcript_ID)
+    TCGA_tpm_without_uniqueiso_log2p = TCGA_tpm_without_uniqueiso_log2p.loc[:,selected_Transcript_ID] # Filter the dataframe of isoform expression by the selected transcripts.
+
+    # Creation of the input2 with size equal to patients x expression of the genes of each of the isoforms:
     TCGA_tpm_gn_expr_each_iso = pd.DataFrame(np.zeros((TCGA_tpm_gn.shape[0], TCGA_tpm_without_uniqueiso_log2p.shape[1])),
                                            index=TCGA_tpm_gn.index, columns=list(getBM.Gene_name))
 
     for i in list(getBM.Gene_name):
         TCGA_tpm_gn_expr_each_iso[i] = TCGA_tpm_gn.loc[:, i]
-    # pacientes x expresión de los genes de cada una de las isoformas.
-    TCGA_tpm_gn_expr_each_iso.head()
+    # patients x expression of the genes of each of the isoforms.
+    
 
      # Split in Training and Validation and Standarization of SFs expression
     df_train, df_validation = train_test_split(
@@ -149,25 +173,40 @@ def get_data(path, config):
 
 def build_optimizer(model, optimizer, learning_rate):
     if optimizer == 'sgd90':
+        # Stochastic gradient descent is extremely basic and is seldom used now. One problem is with the 
+        # worldwide learning rate related to an equivalent . Hence it doesn’t work well when the parameters are 
+        # in several scales since a coffee learning rate will make the training slow while an outsized learning 
+        # rate might cause oscillations. Also, Stochastic gradient descent generally has a hard time escaping the
+        # saddle points. Adagrad, Adadelta, RMSprop, and ADAM generally handle saddle points better. SGD with
+        # momentum renders some speed to the optimization and also helps escape local minima better.
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    
     elif optimizer == 'sgd70':
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.7)
     elif optimizer == 'sgd50':
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.5)
+    elif optimizer == 'asgd':
+        # It Implements Averaged Stochastic Gradient Descent(ASGD) algorithm
+        optimizer = torch.optim.ASGD(model.parameters(), lr=learning_rate, lambd=0.0001, alpha=0.75)
     elif optimizer == 'adam':
+        # adaptive Moment Estimation, it combines the good properties of Adadelta and 
+        #RMSprop optimizer into one and hence tends to do better for most of the problems.
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     elif optimizer == 'adagrad':
+        # Short for adaptive gradient, penalizes the learning rate for parameters that are frequently updated,
+        # instead, it gives more learning rate to sparse parameters, parameters that are not updated as 
+        # frequently.
         optimizer = torch.optim.Adagrad(model.parameters(), lr=learning_rate)
     elif optimizer == 'adadelta':
         optimizer = torch.optim.Adadelta(model.parameters(), lr=learning_rate)
     elif optimizer == 'adamW':
+        # an improved version of Adam class called AdamW in which weight decay is performed only after controlling the parameter-wise step size.
+        #AdamW yields better training loss, that means the models generalize much better than models 
+        # trained with Adam allowing the remake to compete with stochastic gradient descent with momentum.
+        
         optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    elif optimizer == 'adamax':
-        optimizer = torch.optim.Adamax(model.parameters(), lr=learning_rate)
-    elif optimizer == 'RMSProp':
-        optimizer = torch.optim.RMSProp(model.parameters(), lr=learning_rate)
+    
     return optimizer
-
 
 def get_model(config, data_prep):
     inp, out, gn = next(iter(data_prep.train_loader))
@@ -204,7 +243,11 @@ def do_training(model, train_loader, optimizer):
 
 
 def fit(epochs, lr, model, train_loader, val_loader, optimizer, 
-         hyperparameters, if_wandb):
+         hyperparameters, if_wandb, path):
+    
+#     os.chdir(path)
+#     os.chdir("..") # To go from /deepsf/data to /deepsf
+#     path = os.getcwd()
     
     history = []
     if if_wandb:
@@ -223,111 +266,13 @@ def fit(epochs, lr, model, train_loader, val_loader, optimizer,
         if if_wandb:
             wandb.log({"loss": train_epoch_end, "loss_val": val_epoch_end, "epoch": epoch})
         
-   
-#     if if_wandb:
-#     # Save the model in the exchangeable ONNX format
-#         torch.onnx.export(model, "model.onnx")
-#         wandb.save("model.onnx")
+    if if_wandb:
+        # Save the model
+        #torch.save(model.state_dict(), path+'/code_JS/wandb/model.pth')
         
+        torch.save(model.state_dict(), os.path.join(wandb.run.dir, 'model_DeepSF_2hidden_adamW.pt'))
+            
+        #Load: model = MyModelDefinition(args)
+        #      model.load_state_dict(torch.load('load/from/path/model.pth'))   
     return history
 
-
-def f_rmse_weighted(input, target, weights):
-    return torch.sum(weights * (input - target) ** 2)/input.nelement()
-
-# Plots
-#Plot 1
-def val_loss_vs_epoch(history, if_wandb): # Función que plotea el val_loss por epoch  
-    losses = [r['val_loss'] for r in history]
-    plt.plot(losses, '-x')
-    plt.xlabel('epoch')
-    plt.ylabel('val_loss')
-    plt.title('val_loss vs. epochs')
-    
-    if if_wandb:
-        wandb.log({"val_loss_vs_epoch": wandb.Image(plt)})
-
-class ReturnPlotSolution(object):
-    def __init__(self, cor_total, cor_trans):
-        self.cor_total =  cor_total
-        self.cor_trans = cor_trans  
-    
-#Plot2
-def plot_pred_vs_real(x,y,g, model,if_wandb, data_type): # Función que te plotea la predicción del 
-      #modelo versus el real y te calcula el coeficiente de correlación total y 
-      #por transcrito.
-
-    plt.figure(figsize=(15,10))
-
-    Y_df = y.copy() # Matriz Real (para la correlación de transcritos)
-  
-    x = model(torch.Tensor(x.values), torch.Tensor(g.values)).detach().numpy()
-    X_df = x.copy() # Matriz Pred (para la correlación de transcritos)
-  
-    x = x.flatten()
-    y = y.values.flatten()
-
-    fig = sns.regplot(x=x, y=y, scatter_kws = {'alpha':0.1})
-    cor_total = stats.spearmanr(x,y)[0] # total correlation between real and pred
-
-    # Correlación de transcritos:
-    X_df = pd.DataFrame(X_df, columns = Y_df.columns, index = Y_df.index) # Matriz Pred
-
-    cor_trans = []
-    for i in Y_df.columns:
-        cor_trans.append(stats.spearmanr(X_df.loc[:,i],Y_df.loc[:,i])[0])
-
-    if if_wandb:
-        wandb.log({"plot_pred_vs_real_{}".format(data_type): wandb.Image(plt), "cor_total_{}".format(data_type): cor_total,
-                   "cor_trans_{}".format(data_type): cor_trans})
-    return ReturnPlotSolution(cor_total, cor_trans)
-
-#Boxplot 1
-def corr_vs_biotype(getBM, train_labels, cor_values,if_wandb, data_type):
-    
-    plt.figure(figsize=(20,15))                   
-    list_biotype = getBM[getBM.Transcript_ID.isin(train_labels.columns.values)]['Biotype'].values
-
-    data = {'trans':train_labels.columns.values,
-          'corr':  cor_values,
-          'biotype': list_biotype}                     
-                         
-
-    plot_df = pd.DataFrame(data)
-    g = sns.catplot(y="biotype", x="corr",
-                  data=plot_df, palette="Set3",
-                orient="h", height=7, aspect=3,
-                kind="violin", dodge=True, cut=0, bw=.2)
-                       
-    if if_wandb:
-        wandb.log({"corr_vs_biotype_{}".format(data_type): wandb.Image(plt)})
-#         wandb.log({f"corr_vs_biotype_{data_type} sdfsdf": wandb.Image(plt)})
-    
-class ReturnPlotFinalSolution(object):
-    def __init__(self, solution_train_cor_total, solution_train_cor_trans,
-                                  solution_val_cor_total, solution_val_cor_trans):
-        
-        self.solution_train_cor_total = solution_train_cor_total
-        self.solution_train_cor_trans = solution_train_cor_trans 
-        self.solution_val_cor_total = solution_val_cor_total
-        self.solution_val_cor_trans = solution_val_cor_trans 
-    
-def plot_results(history, scaledTrain_df, train_labels, scaled_train_gn,
-                 scaledValidation_df, valid_labels, scaled_valid_gn, model, getBM,
-                 if_wandb):
-
-    val_loss_vs_epoch(history,if_wandb)
-    solution_train = plot_pred_vs_real(scaledTrain_df, train_labels, scaled_train_gn,
-                                       model,if_wandb, 'training') # training
-    solution_val = plot_pred_vs_real(scaledValidation_df,valid_labels, scaled_valid_gn,
-                                     model,if_wandb,'validation') # validation
-    
-    # https://stackoverflow.com/questions/59002624/why-i-get-nan-in-spearman-correlation-in-python
-    corr_vs_biotype(getBM, train_labels, solution_train.cor_trans,if_wandb, 'training')
-    corr_vs_biotype(getBM, valid_labels, solution_val.cor_trans,if_wandb, 'validation')
-    
-     
-    return ReturnPlotFinalSolution(solution_train.cor_total, solution_train.cor_trans,
-                                  solution_val.cor_total, solution_val.cor_trans)
-                         
-   

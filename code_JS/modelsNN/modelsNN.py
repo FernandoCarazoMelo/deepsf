@@ -99,7 +99,7 @@ class DeepSFHiddenWeighted(nn.Module):
         super().__init__()
 
         if len(weights)>0:
-          self.weights = weights
+            self.weights = weights
 
         self.weights_gn = torch.randn(n_outputs, requires_grad=True)
         self.linear1 = nn.Linear(n_inputs, 183) # 1279
@@ -117,9 +117,9 @@ class DeepSFHiddenWeighted(nn.Module):
         inputs, targets, gen_expr = batch 
         out = self(inputs, gen_expr)    # Generate predictions
         if len(weights)>0:
-          loss = f_rmse_weighted(out, targets, self.weights) #F.mse_loss(out, targets)    # Calculate loss
+            loss = f_rmse_weighted(out, targets, self.weights) #F.mse_loss(out, targets)    # Calculate loss
         else:
-          loss = F.mse_loss(out, targets)    # Calculate loss
+            loss = F.mse_loss(out, targets)    # Calculate loss
         
         loss.backward()
 
@@ -127,8 +127,8 @@ class DeepSFHiddenWeighted(nn.Module):
         optimizer.zero_grad()
 
         with torch.no_grad():
-          self.weights_gn -=  self.weights_gn.grad * lr
-          self.weights_gn.grad.zero_()
+            self.weights_gn -=  self.weights_gn.grad * lr
+            self.weights_gn.grad.zero_()
 
         return {'loss': loss.detach()}
       
@@ -136,9 +136,9 @@ class DeepSFHiddenWeighted(nn.Module):
         inputs, targets, gb = batch 
         out = self(inputs, gb)                 # Generate predictions
         if len(weights)>0:
-          loss = f_rmse_weighted(out, targets, self.weights) #F.mse_loss(out, targets)    # Calculate loss
+            loss = f_rmse_weighted(out, targets, self.weights) #F.mse_loss(out, targets)    # Calculate loss
         else:
-          loss = F.mse_loss(out, targets)    # Calculate loss        
+            loss = F.mse_loss(out, targets)    # Calculate loss        
         return {'val_loss': loss.detach()}
 
     def training_epoch_end(self, outputs):
