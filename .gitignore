@@ -8,3 +8,4 @@ code_JS/folder_rawdata_processing/
 __pycache__/
 .vscode
 wandb/
+/dataset_prueba.csv
