@@ -51,3 +51,46 @@ class Config():
             tumor_type =self.tumor_type
         )
         return config
+    
+class Config_AE():
+    """Class settings.
+    """
+
+    def __init__(self,
+                 epochs=3000,
+                 optimizer='adamW',
+                 batch_size=32,
+                 learning_rate=1e-1,
+                 if_wandb=False,
+                 test_size=0.2,
+                 tumor_type=['LUAD']):
+        
+        """Setting deepAE NN characteristics.
+
+        Args:
+          
+        """
+        # Screen
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.optimizer = optimizer
+        self.if_wandb = if_wandb
+        self.test_size = test_size
+        self.tumor_type = tumor_type
+
+    def get_config(self):
+        config = dict(
+            batch_size=self.batch_size,
+            optimizer=self.optimizer,
+            epochs=self.epochs,
+            learning_rate=self.learning_rate,
+            if_wandb=self.if_wandb,
+            test_size=self.test_size,
+            tumor_type =self.tumor_type
+        )
+        return config    
+    
+    
+    
+    

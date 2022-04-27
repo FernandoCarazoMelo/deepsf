@@ -18,6 +18,7 @@ from scipy import stats
 from collections import namedtuple
 import pyreadr
 import os
+from captum.attr import DeepLift
 
 # local modules
 import modelsNN.modelsNN as modelsNN
@@ -60,6 +61,44 @@ def join_different_tumor_data(config, path, listRBPs):
     return data_read
 
 
+def get_data_AE(path,config):
+    
+    # List of splicing genes
+    listRBPs = pd.read_excel(path+'/external/Table_S2_list_RBPs_eyras.xlsx', skiprows=2)
+    
+    # Read and join the data of different cancer types
+    data_read = join_different_tumor_data(config, path, listRBPs)
+    
+    TCGA_tpm_gn = data_read.TCGA_tpm_gn.T
+    cond = data_read.cond
+    getBM = data_read.getBM
+
+    getBM_prot_cod = getBM[getBM.Biotype == 'protein_coding']  # getBM with just protein coding genes
+    
+    gn_prot_cod_list = list(getBM_prot_cod.Gene_name.unique()) # Lista de los protein coding genes.
+    
+    # 2) Filtrar la matriz de genes de expresión con solo los protein coding:
+    TCGA_tpm_gn_prot_cod = TCGA_tpm_gn.loc[:,gn_prot_cod_list]
+    
+    # 3) Split in training and validation and create Data Loader Tensor
+    df_train, df_validation = train_test_split(TCGA_tpm_gn_prot_cod, test_size=0.2, random_state=0)
+
+    # Convert to PyTorch dataset
+    train_ds = TensorDataset(torch.tensor(df_train.values, dtype=torch.float32),
+                             torch.tensor(df_train.values, dtype=torch.float32))
+
+    val_ds = TensorDataset(torch.tensor(df_validation.values, dtype=torch.float32),
+                           torch.tensor(df_validation.values, dtype=torch.float32))
+
+    train_loaderAE = DataLoader(train_ds, config.batch_size, shuffle=True)
+    val_loaderAE = DataLoader(val_ds, config.batch_size*2)
+    
+    DataAE = namedtuple('DataAE', ['getBM_prot_cod', 'TCGA_tpm_gn_prot_cod', 'train_loaderAE', 'val_loaderAE'])
+    
+    data_AE = DataAE(getBM_prot_cod, TCGA_tpm_gn_prot_cod, train_loaderAE, val_loaderAE)
+
+    return data_AE
+    
 def get_data(path, config):
     
     # List of splicing genes
@@ -229,21 +268,8 @@ def do_training(model, train_loader, optimizer):
     return model.training_epoch_end(outputs)
 
 
-# def fit(epochs, lr, model, train_loader, val_loader, optimizer, weights=''):
-#     history = []
-#     #optimizer = opt_func(model.parameters(), lr)
-#     for epoch in range(epochs):
-#         # Training Phase
-#         train_epoch_end = do_training(model, train_loader, optimizer)
-#         # Validation phase
-#         val_epoch_end = evaluate(model, val_loader)
-#         model.epoch_end(epoch, train_epoch_end, val_epoch_end)
-#         history.append(val_epoch_end)
-#     return history
-
-
-def fit(epochs, lr, model, train_loader, val_loader, optimizer, 
-         hyperparameters, if_wandb, path):
+def fit(epochs, model, train_loader, val_loader, optimizer, 
+         hyperparameters, if_wandb, path, model_name):
     
 #     os.chdir(path)
 #     os.chdir("..") # To go from /deepsf/data to /deepsf
@@ -269,10 +295,47 @@ def fit(epochs, lr, model, train_loader, val_loader, optimizer,
     if if_wandb:
         # Save the model
         #torch.save(model.state_dict(), path+'/code_JS/wandb/model.pth')
-        
-        torch.save(model.state_dict(), os.path.join(wandb.run.dir, 'model_DeepSF_2hidden_adamW.pt'))
-            
+        torch.save(model.state_dict(), os.path.join(wandb.run.dir, model_name))  
         #Load: model = MyModelDefinition(args)
-        #      model.load_state_dict(torch.load('load/from/path/model.pth'))   
+        #      model.load_state_dict(torch.load('load/from/path/model.pth')) 
+        
+    else:
+        torch.save(model.state_dict(), os.path.join(path, model_name)) 
+        
     return history
+
+
+def do_deeplift(model, X_test, gn_test, y_test, data_prep):
+# igual lo del target no lo tenemos bien, mira aquí: https://github.com/pytorch/captum/issues/482
+
+    base_x_test = np.median(X_test, axis = 0)
+    base_x_test = torch.tensor(base_x_test).float()
+    base_x_test = torch.reshape(base_x_test,(1,base_x_test.size()[0]))
+
+    base_gn_test = np.median(gn_test, axis = 0)
+    base_gn_test = torch.tensor(base_gn_test).float()
+    base_gn_test = torch.reshape(base_gn_test,(1,base_gn_test.size()[0]))
+
+    algorithm = DeepLift(model)
+    df = pd.DataFrame(np.zeros((1,X_test.shape[1])), columns=X_test.columns.to_list()) # Output node x input features
+    for i in range(0, y_test.shape[1]):
+
+        attr_test = algorithm.attribute(
+            inputs = (torch.tensor(X_test.values).float(),
+            torch.tensor(gn_test.values).float()), 
+            baselines = (base_x_test, base_gn_test),
+            target=i)
+
+        attr_test_sum = attr_test[0].detach().numpy().sum(0)
+
+        if attr_test_sum.sum() == 0: #Para que no haya nulos.
+            attr_test_norm_sum = attr_test_sum
+        else:
+            attr_test_norm_sum = attr_test_sum / np.linalg.norm(attr_test_sum, ord=1)
+
+        df.loc[i,:] = attr_test_norm_sum
+
+    df = df.T
+    df.columns = data_prep.valid_labels.columns.to_list()
+    return df
 
