@@ -1,3 +1,5 @@
+# El config mejorarlo una vez q tengamos todas las muestras
+
 class Config():
     """Class settings.
     """
@@ -6,25 +8,25 @@ class Config():
                  epochs=3000,
                  optimizer='adamW',
                  modelNN='DeepSF_2hidden',
-                 batch_size=32,
-                 learning_rate=1e-1,
+                 batch_size=128,
+                 learning_rate=1e-4,
                  if_toy=False,
-                 if_wandb=False,
+                 if_wandb=True,
                  test_size=0.2,
                  num_genes=898,
-                 tumor_type=['LUAD']):
+                 tumor_type='all'):
+                 #tumor_type=['LUAD']):
         """Setting deepsf NN characteristics.
 
         Args:
-            batch_size (int, optional): batch size. Defaults to 32.
-            learning_rate (float, optional): learning rate. Defaults to 1e-1.
+            batch_size (int, optional): batch size. Defaults to 128.
+            learning_rate (float, optional): learning rate. Defaults to 1e-4.
             if_toy (bool, optional): If true you can select the first x num_genes for training; if False just the cancer related genes are used for training. Defaults to True.
             if_wandb (bool, optional): All parameters are tracked by weights and biases. Defaults to False.
             test_size (float, optional): test size. Defaults to 0.2.
             num_genes (int, optional): number of genes included for training. Defaults to 898. If if_toy=False the num_genes is equal to the number of cancer related genes (898). Otherwise you can select the number of genes you want to train the model.
-            tumor_type (list, optional): a list of the cancer types used for training. Default is LUAD
+            tumor_type (list or string, optional): a list of the cancer types used for training or string 'all' if all the cancer types will be used 
         """
-
         # Screen
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -57,13 +59,14 @@ class Config_AE():
     """
 
     def __init__(self,
-                 epochs=3000,
-                 optimizer='adamW',
-                 batch_size=32,
-                 learning_rate=1e-1,
-                 if_wandb=False,
+                 epochs=40000,
+                 optimizer='Adam',
+                 batch_size=128,
+                 learning_rate=1e-4,
+                 if_wandb=True,
                  test_size=0.2,
-                 tumor_type=['LUAD']):
+                 tumor_type='all'):
+                 #tumor_type=['LUAD']): #all
         
         """Setting deepAE NN characteristics.
 
@@ -90,7 +93,3 @@ class Config_AE():
             tumor_type =self.tumor_type
         )
         return config    
-    
-    
-    
-    

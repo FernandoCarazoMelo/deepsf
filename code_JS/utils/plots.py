@@ -1,14 +1,19 @@
-# Plots
-
 # Imports
 import torch
 import wandb
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator,FormatStrFormatter,MaxNLocator
 from scipy import stats
 from collections import namedtuple
+
+# Global parameters
+mpl.rcParams['pdf.fonttype'] = 42
+mpl.rcParams['ps.fonttype'] = 42
+mpl.rcParams['font.family'] = 'Arial'
 
 def val_loss_vs_epoch(history, if_wandb, config): 
     
@@ -23,7 +28,7 @@ def val_loss_vs_epoch(history, if_wandb, config):
     losses = [r['val_loss'] for r in history]
     
     # Plot
-    plt.figure(figsize=(10,10))
+    plt.figure(figsize=(10,10)) # width, height
     plt.plot(losses, '-x')
     plt.xlabel('epoch', fontsize = 14)
     plt.ylabel('val_loss', fontsize = 14)
@@ -35,8 +40,8 @@ def val_loss_vs_epoch(history, if_wandb, config):
         wandb.log({"val_loss_vs_epoch": wandb.Image(plt)})
  
     
-#Plot2
-def plot_pred_vs_real(x,y,g, model,if_wandb, data_type, getBM, config): 
+def plot_pred_vs_real(x,y,g, model,if_wandb, data_type, getBM, config, if_ensemble,
+                     xa): 
     
 #     """
 #     Function that plots the prediction of the model vs the real one and calculates the total correlation coefficient and for each of the transcripts.
@@ -53,10 +58,15 @@ def plot_pred_vs_real(x,y,g, model,if_wandb, data_type, getBM, config):
     plt.xticks(fontsize=14, rotation=0)
     plt.yticks(fontsize=14, rotation=0)
     
-    Y_df = y.copy() # Matriz Real (para la correlación de transcritos)
+    Y_df = y.copy() # Real Matrix (for transcript correlation)
   
-    x = model(torch.Tensor(x.values), torch.Tensor(g.values)).detach().numpy()
-    X_df = x.copy() # Matriz Pred (para la correlación de transcritos)
+    if if_ensemble==True:
+        x = model(torch.Tensor(x.values), torch.Tensor(g.values),
+                 torch.Tensor(xa.values)).detach().numpy()
+    else:
+        x = model(torch.Tensor(x.values), torch.Tensor(g.values)).detach().numpy()
+    
+    X_df = x.copy() # Pred matrix (for transcript correlation)
   
     x = x.flatten()
     y = y.values.flatten()
@@ -64,9 +74,8 @@ def plot_pred_vs_real(x,y,g, model,if_wandb, data_type, getBM, config):
     fig = sns.regplot(x=x, y=y, scatter_kws = {'alpha':0.1})
     cor_total = stats.spearmanr(x,y)[0] # total correlation between real and pred
 
-    # Correlación de transcritos:
-    X_df = pd.DataFrame(X_df, columns = Y_df.columns, index = Y_df.index) # Matriz Pred
-
+    # Correlation of transcripts:
+    X_df = pd.DataFrame(X_df, columns = Y_df.columns, index = Y_df.index) # Pred Matrix
     cor_trans = []
     for i in Y_df.columns:
         cor_trans.append(stats.spearmanr(X_df.loc[:,i],Y_df.loc[:,i])[0])
@@ -88,7 +97,6 @@ def plot_pred_vs_real(x,y,g, model,if_wandb, data_type, getBM, config):
     
     return plot_pred_real_output
     
-#Boxplot 1
 def corr_vs_biotype(getBM, train_labels, df, if_wandb, data_type, config):
     
     list_biotype = getBM[getBM.Transcript_ID.isin(train_labels.columns.values)]['Biotype'].values
@@ -97,7 +105,6 @@ def corr_vs_biotype(getBM, train_labels, df, if_wandb, data_type, config):
           'corr':  df.cor_values.values,
           'biotype': list_biotype}                     
                          
-
     plot_df = pd.DataFrame(data)
     
     # Change default context
@@ -113,23 +120,22 @@ def corr_vs_biotype(getBM, train_labels, df, if_wandb, data_type, config):
     
     ax.fig.subplots_adjust(top=0.9) # adjust the Figure in rp
     ax.fig.suptitle(f'{config.modelNN} model, with {config.learning_rate} learning_rate, {config.optimizer} optimizer & {config.epochs} epochs')
-    
-                       
+                   
     if if_wandb:
         wandb.log({"corr_vs_biotype_{}".format(data_type): wandb.Image(plt)})
-#         wandb.log({f"corr_vs_biotype_{data_type} sdfsdf": wandb.Image(plt)})
-    
     
 def plot_results(history, scaledTrain_df, train_labels, scaled_train_gn,
                  scaledValidation_df, valid_labels, scaled_valid_gn, model, getBM,
-                 if_wandb, config):
+                 if_wandb, config, if_ensemble=False, xa_tr='', xa_val=''):
 
     val_loss_vs_epoch(history,if_wandb, config)
     solution_train = plot_pred_vs_real(scaledTrain_df, train_labels, scaled_train_gn,
-                                       model,if_wandb, 'training', getBM, config) # training
+                                       model,if_wandb, 'training', getBM, config,
+                                      if_ensemble, xa_tr) # training
    
     solution_val = plot_pred_vs_real(scaledValidation_df,valid_labels, scaled_valid_gn,
-                                     model,if_wandb,'validation',getBM, config) # validation
+                                     model,if_wandb,'validation',getBM, config,
+                                    if_ensemble, xa_val) # validation
     
     corr_vs_biotype(getBM, train_labels, solution_train.df, if_wandb, 'training', config)
     corr_vs_biotype(getBM, valid_labels, solution_val.df, if_wandb, 'validation', config)
