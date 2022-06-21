@@ -61,7 +61,8 @@ def plot_pred_vs_real(x,y,g, model,if_wandb, data_type, getBM, config, if_ensemb
     Y_df = y.copy() # Real Matrix (for transcript correlation)
   
     if if_ensemble==True:
-        x = model(torch.Tensor(x.values), torch.Tensor(g.values),
+        x = model(torch.Tensor(x.values), 
+                  torch.Tensor(g.values),
                  torch.Tensor(xa.values)).detach().numpy()
     else:
         x = model(torch.Tensor(x.values), torch.Tensor(g.values)).detach().numpy()
@@ -112,7 +113,8 @@ def corr_vs_biotype(getBM, train_labels, df, if_wandb, data_type, config):
     sns.set_palette('rainbow')
     
     # Plot
-    plt.figure(figsize=(5,5), dpi=160) 
+    plt.figure(figsize=(6,3), dpi=30) 
+    
     ax = sns.catplot(y="biotype", x="corr",
                   data=plot_df, palette="Set3",
                 orient="h", height=10, aspect=5,
@@ -126,7 +128,7 @@ def corr_vs_biotype(getBM, train_labels, df, if_wandb, data_type, config):
     
 def plot_results(history, scaledTrain_df, train_labels, scaled_train_gn,
                  scaledValidation_df, valid_labels, scaled_valid_gn, model, getBM,
-                 if_wandb, config, if_ensemble=False, xa_tr='', xa_val=''):
+                 if_wandb, config, if_ensemble, xa_tr='', xa_val=''):
 
     val_loss_vs_epoch(history,if_wandb, config)
     solution_train = plot_pred_vs_real(scaledTrain_df, train_labels, scaled_train_gn,

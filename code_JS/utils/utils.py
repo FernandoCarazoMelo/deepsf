@@ -340,19 +340,21 @@ def fit(epochs, model, train_loader, val_loader, optimizer,
         print(f'Model saved succesfully in {path}')   
     return history
 
-# # igual lo del target no lo tenemos bien, mira aquí: https://github.com/pytorch/captum/issues/482
-# FALTA METERLE PARA EL MODEL ENSEMBLE.
+def calculate_attributions(if_ensemble, algorithm, X_test, base_x_test, i, gn_test, xa_test):
+    if if_ensemble== True: # -> DeepEnsemble
+        attr_test = algorithm.attribute(
+                    inputs = torch.tensor(X_test.values).float(), #sfs 
+                    baselines = base_x_test,
+                    target=i,
+                    additional_forward_args = (torch.tensor(gn_test.values).float(), 
+                                               torch.tensor(xa_test.values).float()))
+        attr_test_sum = attr_test.detach().numpy().sum(0)
+        if attr_test_sum.sum() == 0: #So to not be null values
+            attr_test_norm_sum = attr_test_sum
+        else:
+            attr_test_norm_sum = attr_test_sum / np.linalg.norm(attr_test_sum, ord=1)
 
-def do_deeplift(model, X_test, gn_test, y_test, data_prep):
-    # baseline
-    base_x_test = np.median(X_test, axis = 0)
-    base_x_test = torch.tensor(base_x_test).float()
-    base_x_test = torch.reshape(base_x_test,(1,base_x_test.size()[0]))
-
-    algorithm = DeepLift(model)
-    df = pd.DataFrame(np.zeros((1,X_test.shape[1])), columns=X_test.columns.to_list()) # Output node x input features
-    
-    for i in range(0,y_test.shape[1]):
+    else: # -> Deepsf2hidden
         attr_test = algorithm.attribute(
                     inputs = torch.tensor(X_test.values).float(), #sfs 
                     baselines = base_x_test,
@@ -360,13 +362,23 @@ def do_deeplift(model, X_test, gn_test, y_test, data_prep):
                     additional_forward_args = torch.tensor(gn_test.values).float())
 
         attr_test_sum = attr_test.detach().numpy().sum(0)
-
-        if attr_test_sum.sum() == 0: #Para que no haya nulos.
+        if attr_test_sum.sum() == 0: 
             attr_test_norm_sum = attr_test_sum
-            #1645
         else:
-            attr_test_norm_sum = attr_test_sum / np.linalg.norm(attr_test_sum, ord=1)
+            attr_test_norm_sum = attr_test_sum / np.linalg.norm(attr_test_sum, ord=1)    
+    return attr_test_norm_sum
 
+def do_deeplift(model, X_test, gn_test, y_test, data_prep, if_ensemble, xa_test = ''):
+    # baseline
+    base_x_test = np.median(X_test, axis = 0)
+    base_x_test = torch.tensor(base_x_test).float()
+    base_x_test = torch.reshape(base_x_test,(1,base_x_test.size()[0]))
+
+    algorithm = DeepLift(model)
+    df = pd.DataFrame(np.zeros((1,X_test.shape[1])), columns=X_test.columns.to_list()) # Output node x input features
+
+    for i in range(0,y_test.shape[1]):
+        attr_test_norm_sum = calculate_attributions(if_ensemble, algorithm, X_test, base_x_test, i, gn_test, xa_test)
         df.loc[i,:] = attr_test_norm_sum
     df = df.T
     df.columns = data_prep.valid_labels.columns.to_list()

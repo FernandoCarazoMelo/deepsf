@@ -168,10 +168,10 @@ class DeepAE(nn.Module):
         self.linear4 = nn.Linear(512, n_inputs)
     
     def forward(self, inputs):
-        x = F.sigmoid(self.bn1(self.linear1(inputs)))
-        x = F.sigmoid(self.bn2(self.linear2(x)))
-        x = F.sigmoid(self.linear3(x))
-        out = F.sigmoid(self.linear4(x))
+        x = torch.sigmoid(self.bn1(self.linear1(inputs)))
+        x = torch.sigmoid(self.bn2(self.linear2(x)))
+        x = torch.sigmoid(self.linear3(x))
+        out = torch.sigmoid(self.linear4(x))
         return out
     
     def training_step(self, batch, optimizer):
