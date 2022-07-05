@@ -32,10 +32,8 @@ def join_different_tumor_data(config, path):
     cond = pd.DataFrame()
                     
     if config.tumor_type == 'all':
-        cancer_sites = ["BLCA","BRCA", "CESC", "CHOL", "COAD", "ESCA", "GBM", "HNSC",
-                    "KICH", "KIRC", "KIRP", "LIHC", "LUAD", "LUSC", "PAAD","PCPG",
-                    "PRAD", "READ", "SARC", "SKCM", "STAD", "THCA", "THYM","UCEC",
-                    "UVM", "ACC", "DLBC", "LAML", "LGG", "MESO", "OV", "TGCT","USC"]
+        cancer_sites  = ["LUAD", "LUSC", "COAD", "PAAD", "PRAD", "READ", "CESC", "OV", "STAD"]
+        
         for i in cancer_sites:
             result = pyreadr.read_r(path+'/processed/'+f'Parsing_TCGA_{i}.RData')
 
