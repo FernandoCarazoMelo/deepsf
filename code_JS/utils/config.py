@@ -63,7 +63,7 @@ class Config_AE():
     """
 
     def __init__(self,
-                 epochs=40000,
+                 epochs=1000,
                  optimizer='Adam',
                  batch_size=128,
                  learning_rate=1e-4,
