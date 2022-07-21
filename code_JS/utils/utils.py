@@ -336,7 +336,9 @@ def fit(epochs, model, train_loader, val_loader, optimizer,
     if if_wandb:
         # Save the model
         torch.save(model.state_dict(), os.path.join(wandb.run.dir, model_name))  
-        print(f'Model saved succesfully in {wandb.run.dir}')   
+        print(f'Model saved succesfully in {wandb.run.dir}') 
+        torch.save(model.state_dict(), os.path.join(path, model_name)) 
+        print(f'Model saved succesfully in {path}')   
     else:
         torch.save(model.state_dict(), os.path.join(path, model_name)) 
         print(f'Model saved succesfully in {path}')   
