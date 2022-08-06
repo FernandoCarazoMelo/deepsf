@@ -4,14 +4,18 @@
 
 A Deep Neural Network to predict cell transcriptome from genome.
 
-![](/docs/deepsf_dnn.drawio.svg)
+
 
 
 # Introduction
 
 The main objective of this project is to build a deep neural network (DNN) that models how the transcriptome of cancer related genes is expressed from the splicing factors and the genome. An autoencoder was also trained and added to the final model architecture to study the cellular context of protein coding genes in different tumor tissues. Finally, we tried to identify which splicing factors regulate which genes by interpreting the parameters of the final model with a tool called Deep Learning of Features (DeepLIFT).
 
+
+![](/docs/deepsf_dnn.drawio.svg)
 Figure 2. The Deep Neural Networks developed in this project.
+
+
 Deep learning models has already been used to identify gene expression level (Lirong Zhang, 2022), discover disease-relevant modules of genes (Sanjiv K. Dwivedi, 2020), inferring transcription factor (TF) binding sites (Peter K.Koo, 2020), predict TFs from protein sequences (Gi Bae Kim, 2020) or predict transcriptomic profiles from TF expression (Rasmus Magnusson, 2022). However, the use of the gene expression of known SFs to unveil the transcriptome regulation is a novel approach.
 
 
